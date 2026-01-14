@@ -1,0 +1,8 @@
+{
+  "name": "InPost Courier AI",
+  "description": "Advanced AI-driven route optimization tool for couriers, featuring real-time TSP solving, habit learning, and offline capabilities.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
