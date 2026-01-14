@@ -48,6 +48,23 @@ const App: React.FC = () => {
     checkForOptimization(withTimeline);
   };
 
+  const handleUpdatePackage = (id: string, newAddress: string) => {
+    const updatedList = packages.map(p => {
+      if (p.id === id) {
+        return {
+          ...p,
+          address: newAddress,
+          // Upgrade confidence to 0.5 (Manual Address) if it was lower
+          locationConfidence: Math.max(p.locationConfidence, 0.5)
+        };
+      }
+      return p;
+    });
+    const withTimeline = calculateTimeline(updatedList);
+    setPackages(withTimeline);
+    showNotification("Adres zaktualizowany");
+  };
+
   const checkForOptimization = async (currentPackages: Package[]) => {
     setIsProcessing(true);
     setTimeout(async () => {
@@ -184,6 +201,7 @@ const App: React.FC = () => {
             isLast={index === packages.length - 1}
             onMove={handleManualMove}
             onStatusChange={handleStatusChange}
+            onUpdate={handleUpdatePackage}
           />
         ))}
         

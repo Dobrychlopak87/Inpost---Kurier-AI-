@@ -2,7 +2,6 @@ import { Package, Coordinates, PackageStatus, CitySegment, CopilotSuggestion } f
 import { DEPOT_COORDS } from '../constants';
 
 // --- CITY MEMORY LAYER ---
-// Symulacja bazy danych czasów przejazdu. W realu to byłby IndexedDB/SQLite.
 const getCityMemory = (): CitySegment[] => {
   const stored = localStorage.getItem('inpost_city_memory');
   return stored ? JSON.parse(stored) : [];
@@ -10,7 +9,9 @@ const getCityMemory = (): CitySegment[] => {
 
 // --- CORE UTILS ---
 
-const calculateDistanceKm = (a: Coordinates, b: Coordinates): number => {
+const calculateDistanceKm = (a?: Coordinates, b?: Coordinates): number => {
+  if (!a || !b) return 0; // If coordinates are missing, assume 0 geometric distance for now.
+
   const R = 6371; 
   const dLat = (b.lat - a.lat) * Math.PI / 180;
   const dLng = (b.lng - a.lng) * Math.PI / 180;
@@ -19,16 +20,13 @@ const calculateDistanceKm = (a: Coordinates, b: Coordinates): number => {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
 };
 
-const estimateTravelTime = (a: Coordinates, b: Coordinates): number => {
-  // 1. Sprawdź pamięć miasta (uproszczone)
-  // const memory = getCityMemory();
-  // ... logika wyszukiwania segmentu ...
+const estimateTravelTime = (a?: Coordinates, b?: Coordinates): number => {
+  if (!a || !b) return 5; // Default 5 min penalty for unknown locations
 
-  // 2. Fallback do heurystyki
   const dist = calculateDistanceKm(a, b);
-  const baseSpeed = 25; // km/h (miasto)
+  const baseSpeed = 25; // km/h (city)
   const timeHours = dist / baseSpeed;
-  return Math.ceil(timeHours * 60) + 2; // +2 min na parkowanie/światła
+  return Math.ceil(timeHours * 60) + 2; // +2 min parking
 };
 
 // --- LOGIC: TIMELINE CALCULATOR ---
@@ -36,28 +34,24 @@ const estimateTravelTime = (a: Coordinates, b: Coordinates): number => {
 export const calculateTimeline = (route: Package[], startTime: Date = new Date()): Package[] => {
   let currentTime = startTime.getTime();
   let currentLoc = DEPOT_COORDS;
-
-  // Znajdź pierwszą niedostarczoną paczkę, żeby wiedzieć skąd startujemy z czasem
-  // Jeśli są już dostarczone, bierzemy czas ostatniej dostarczonej jako bazę?
-  // Dla uproszczenia demo: zawsze liczymy "od teraz" dla pending.
   
   return route.map(pkg => {
     if (pkg.status !== PackageStatus.PENDING) {
-        // Dla dostarczonych/nieudanych czyścimy ETA, bo to już historia
         return { ...pkg, calculatedEta: undefined }; 
     }
 
     const travelMin = estimateTravelTime(currentLoc, pkg.coords);
-    const serviceMin = 3; // Czas doręczenia
+    const serviceMin = 3; 
     
-    // Dodajemy czas dojazdu
     currentTime += travelMin * 60 * 1000;
     
     const etaDate = new Date(currentTime);
     const etaString = etaDate.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
     
-    // Aktualizacja pozycji kuriera i czasu (po doręczeniu)
-    currentLoc = pkg.coords;
+    // Only update current location if the package has valid coords
+    if (pkg.coords) {
+        currentLoc = pkg.coords;
+    }
     currentTime += serviceMin * 60 * 1000;
 
     return { ...pkg, calculatedEta: etaString };
@@ -66,10 +60,6 @@ export const calculateTimeline = (route: Package[], startTime: Date = new Date()
 
 // --- LOGIC: COPILOT ---
 
-/**
- * Zamiast mieszać całą listę, Copilot patrzy na najbliższe 4 paczki (Sliding Window)
- * i sprawdza, czy ich permutacja daje zysk czasowy > 3 min.
- */
 export const checkOptimizationOpportunity = async (packages: Package[]): Promise<CopilotSuggestion | null> => {
   const pendingStartIndex = packages.findIndex(p => p.status === PackageStatus.PENDING);
   if (pendingStartIndex === -1) return null;
@@ -77,28 +67,28 @@ export const checkOptimizationOpportunity = async (packages: Package[]): Promise
   const pending = packages.filter(p => p.status === PackageStatus.PENDING);
   if (pending.length < 3) return null;
 
-  // Analizujemy tylko najbliższe okno (sliding window)
   const windowSize = 4;
   const lookahead = pending.slice(0, windowSize);
   
-  // Jeśli użytkownik "zablokował" kolejność (np. ręcznie przesunął), nie ruszamy
   if (lookahead.some(p => p.isLocked)) return null;
 
-  // Znajdź punkt startowy (baza lub ostatnia dostarczona)
+  // Filter out packages without coordinates from geometric optimization
+  // If a package has no coords, we cannot optimize it geometrically.
+  if (lookahead.some(p => !p.coords)) return null;
+
   let startCoords = DEPOT_COORDS;
   const prevPkg = packages[pendingStartIndex - 1];
-  if (prevPkg) startCoords = prevPkg.coords;
+  if (prevPkg && prevPkg.coords) startCoords = prevPkg.coords;
 
-  // Brute Force Permutacji (4 elementy = 24 opcje)
   let bestPermutation = [...lookahead];
   let minTime = Infinity;
   let currentCost = 0;
 
-  // Koszt obecny
+  // Cost calculation
   let tempLoc = startCoords;
   lookahead.forEach(p => {
     currentCost += estimateTravelTime(tempLoc, p.coords);
-    tempLoc = p.coords;
+    if(p.coords) tempLoc = p.coords;
   });
 
   const permute = (arr: Package[], m: Package[] = []) => {
@@ -107,7 +97,7 @@ export const checkOptimizationOpportunity = async (packages: Package[]): Promise
       let loc = startCoords;
       m.forEach(p => {
         cost += estimateTravelTime(loc, p.coords);
-        loc = p.coords;
+        if(p.coords) loc = p.coords;
       });
       if (cost < minTime) {
         minTime = cost;
@@ -126,16 +116,10 @@ export const checkOptimizationOpportunity = async (packages: Package[]): Promise
 
   const savings = currentCost - minTime;
   
-  // Reguła: Nie zawracaj głowy o 1 minutę.
   if (savings >= 3) {
-    // Konstrukcja nowej listy
     const newPending = [...bestPermutation, ...pending.slice(windowSize)];
-    
-    // Odtwórz pełną listę zachowując historyczne (delivered)
     const history = packages.slice(0, pendingStartIndex);
     const fullProposal = [...history, ...newPending];
-
-    // Przelicz ETA dla propozycji
     const calculatedProposal = calculateTimeline(fullProposal);
 
     return {
@@ -151,12 +135,16 @@ export const checkOptimizationOpportunity = async (packages: Package[]): Promise
   return null;
 };
 
-// Sortowanie wstępne (klasteryzacja) - uruchamiane tylko raz na starcie
 export const initialClusterSort = (packages: Package[]): Package[] => {
   const sorted = [...packages].sort((a, b) => {
-     // Prosty sort: priorytety najpierw, potem geografia (scan-line)
      if (a.priority && !b.priority) return -1;
      if (!a.priority && b.priority) return 1;
+     
+     // Handle missing coords in sort: push to end if missing
+     if (!a.coords && !b.coords) return 0;
+     if (!a.coords) return 1;
+     if (!b.coords) return -1;
+
      return b.coords.lat - a.coords.lat;
   });
   return calculateTimeline(sorted);

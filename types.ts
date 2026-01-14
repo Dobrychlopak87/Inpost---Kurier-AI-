@@ -12,38 +12,34 @@ export interface Coordinates {
 
 export interface Package {
   id: string;
-  address: string;
-  coords: Coordinates;
+  shipmentId?: string; // ID from barcode
+  address?: string; // Optional: might be unknown for barcode scans
+  coords?: Coordinates; // Optional: scanning might not yield GPS
   priority: boolean;
   status: PackageStatus;
   estimatedTimeWindow?: string;
-  calculatedEta?: string; // Np. "09:42"
-  clusterId?: string; // ID dzielnicy/rejonu
-  isLocked?: boolean; // Jeśli kurier ręcznie przesunął, AI tego nie dotyka
+  calculatedEta?: string;
+  clusterId?: string;
+  isLocked?: boolean;
   
-  // Nowe pole dla LabelIngestService
-  // 1.0 = Pewny (Paczkomat, Historyczny GPS)
-  // 0.5 = Przybliżony (Tylko ulica, brak numeru)
-  // 0.0 = Nieznany (Surowy tekst z OCR)
-  locationConfidence?: number; 
+  // 1.0 = Locker/GPS, 0.5 = Address text, 0.0 = Raw ID
+  locationConfidence: number; 
 }
 
-// "Pamięć Miasta" - zamiast uczyć się tras, uczymy się czasów odcinków
 export interface CitySegment {
-  fromId: string; // Hash lokalizacji A
-  toId: string;   // Hash lokalizacji B
+  fromId: string;
+  toId: string;
   durationMinutes: number;
-  confidence: number; // Ile razy przejechaliśmy (0-100)
+  confidence: number;
 }
 
-// Propozycja od Copilota
 export interface CopilotSuggestion {
-  id: string; // Unikalne ID sugestii
+  id: string;
   type: 'SHORTCUT' | 'PRIORITY_FIX';
   savingsMinutes: number;
   message: string;
   affectedPackageIds: string[];
-  proposedPackages: Package[]; // Gotowa, przeliczona lista do podmienienia
+  proposedPackages: Package[];
 }
 
 export interface AIState {

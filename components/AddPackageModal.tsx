@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Camera, Type, X, ScanLine, ArrowRight } from 'lucide-react';
-import { CameraScanner } from './CameraScanner';
-import { createPackageFromInput } from '../services/labelIngestService';
+import { Type, X, ScanLine, ArrowRight } from 'lucide-react';
+import CameraScanner from './CameraScanner';
+import { ingestLabel } from '../services/labelIngestService';
 import { Package } from '../types';
 
 interface AddPackageModalProps {
@@ -14,7 +14,7 @@ export const AddPackageModal: React.FC<AddPackageModalProps> = ({ onAdd, onClose
   const [manualInput, setManualInput] = useState('');
 
   const handleScanResult = (data: string) => {
-    const pkg = createPackageFromInput(data, 'SCAN');
+    const pkg = ingestLabel(data);
     onAdd(pkg);
     onClose();
   };
@@ -22,13 +22,29 @@ export const AddPackageModal: React.FC<AddPackageModalProps> = ({ onAdd, onClose
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualInput.trim()) return;
-    const pkg = createPackageFromInput(manualInput, 'MANUAL');
+    const pkg = ingestLabel(manualInput);
     onAdd(pkg);
     onClose();
   };
 
   if (mode === 'SCAN') {
-    return <CameraScanner onScan={handleScanResult} onClose={() => setMode('SELECT')} />;
+    return (
+      <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+        <CameraScanner onScan={handleScanResult} onCancel={() => setMode('SELECT')} />
+        
+        {/* UI Overlay for Camera */}
+        <button 
+          onClick={() => setMode('SELECT')} 
+          className="absolute top-4 right-4 bg-gray-800 p-2 rounded-full text-white z-50"
+        >
+          <X size={24} />
+        </button>
+        <div className="absolute inset-0 pointer-events-none border-2 border-inpost-yellow opacity-50 m-12 rounded-lg animate-pulse"></div>
+        <p className="absolute bottom-10 bg-black/60 text-white px-4 py-2 rounded-full font-mono text-sm z-50 pointer-events-none">
+          Zeskanuj etykietę InPost
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -82,7 +98,7 @@ export const AddPackageModal: React.FC<AddPackageModalProps> = ({ onAdd, onClose
                   type="text" 
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
-                  placeholder="np. ul. Kolejowa 5"
+                  placeholder="np. ul. Kolejowa 5 lub ID paczkomatu"
                   className="w-full bg-black border border-gray-600 rounded p-3 text-white focus:border-inpost-yellow focus:outline-none"
                 />
               </div>

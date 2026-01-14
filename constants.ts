@@ -29,7 +29,8 @@ export const INITIAL_PACKAGES: Package[] = [
     coords: { lat: 52.052, lng: 15.105 }, 
     priority: true, 
     status: PackageStatus.PENDING, 
-    estimatedTimeWindow: '10:00 - 11:00' 
+    estimatedTimeWindow: '10:00 - 11:00',
+    locationConfidence: 1.0
   },
   { 
     id: 'PKG-102', 
@@ -37,7 +38,8 @@ export const INITIAL_PACKAGES: Package[] = [
     coords: { lat: 52.048, lng: 15.112 }, 
     priority: false, 
     status: PackageStatus.PENDING, 
-    estimatedTimeWindow: '11:00 - 11:15' 
+    estimatedTimeWindow: '11:00 - 11:15',
+    locationConfidence: 1.0
   },
   { 
     id: 'PKG-103', 
@@ -45,21 +47,24 @@ export const INITIAL_PACKAGES: Package[] = [
     coords: { lat: 52.051, lng: 15.095 }, 
     priority: true, 
     status: PackageStatus.PENDING, 
-    estimatedTimeWindow: '09:30 - 10:00' 
+    estimatedTimeWindow: '09:30 - 10:00',
+    locationConfidence: 1.0
   },
   { 
     id: 'PKG-104', 
     address: 'ul. Słoneczna 8', 
     coords: { lat: 52.040, lng: 15.085 }, 
     priority: false, 
-    status: PackageStatus.PENDING 
+    status: PackageStatus.PENDING,
+    locationConfidence: 1.0
   },
   { 
     id: 'PKG-105', 
     address: 'ul. 1 Maja 45', 
     coords: { lat: 52.058, lng: 15.090 }, 
     priority: false, 
-    status: PackageStatus.PENDING 
+    status: PackageStatus.PENDING,
+    locationConfidence: 1.0
   },
 ];
 
