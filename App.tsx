@@ -1,49 +1,55 @@
 import React, { useState, useEffect } from 'react';
 import { Package, PackageStatus, CopilotSuggestion } from './types';
-import { INITIAL_PACKAGES, TOAST_DURATION, MAP_CENTER } from './constants';
+import { INITIAL_PACKAGES, TOAST_DURATION } from './constants';
 import { initialClusterSort, calculateTimeline, checkOptimizationOpportunity } from './services/aiService';
+import { AddPackageModal } from './components/AddPackageModal';
 import MapVisualizer from './components/MapVisualizer';
 import { PackageItem } from './components/PackageItem';
-import { Scan, AlertTriangle, CheckCircle, Navigation, Sparkles, X } from 'lucide-react';
+import { Scan, AlertTriangle, CheckCircle, Navigation, Sparkles, X, Plus } from 'lucide-react';
+
+const STORAGE_KEY = 'inpost_packages_v1';
 
 const App: React.FC = () => {
-  const [packages, setPackages] = useState<Package[]>(INITIAL_PACKAGES);
+  const [packages, setPackages] = useState<Package[]>([]);
   const [suggestion, setSuggestion] = useState<CopilotSuggestion | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Initial Cluster Sort (Run once)
+  // Load from Storage or Initial
   useEffect(() => {
-    const sorted = initialClusterSort(INITIAL_PACKAGES);
-    setPackages(sorted);
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      setPackages(JSON.parse(saved));
+    } else {
+      const sorted = initialClusterSort(INITIAL_PACKAGES);
+      setPackages(sorted);
+    }
   }, []);
+
+  // Save to Storage on change
+  useEffect(() => {
+    if (packages.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(packages));
+    }
+  }, [packages]);
 
   const showNotification = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), TOAST_DURATION);
   };
 
-  // --- CORE WORKFLOW ---
-
   const handleStatusChange = async (id: string, newStatus: PackageStatus) => {
-    // 1. Update status locally
     const updatedList = packages.map(p => 
       p.id === id ? { ...p, status: newStatus } : p
     );
-    
-    // 2. Recalculate Timeline (Synchronous, fast)
-    // We do NOT reorder, just update ETAs for remaining items
     const withTimeline = calculateTimeline(updatedList);
     setPackages(withTimeline);
-
-    // 3. Trigger Passive Copilot Check (Async)
-    // Runs in background to see if remaining route can be optimized
     checkForOptimization(withTimeline);
   };
 
   const checkForOptimization = async (currentPackages: Package[]) => {
     setIsProcessing(true);
-    // Simulate async calculation
     setTimeout(async () => {
         const result = await checkOptimizationOpportunity(currentPackages);
         if (result) {
@@ -67,50 +73,45 @@ const App: React.FC = () => {
   const handleManualMove = (index: number, direction: 'up' | 'down') => {
     const newPackages = [...packages];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
-
     if (targetIndex < 0 || targetIndex >= newPackages.length) return;
 
-    // Swap
     [newPackages[index], newPackages[targetIndex]] = [newPackages[targetIndex], newPackages[index]];
-    
-    // Mark as Locked (Copilot won't touch these)
     newPackages[index].isLocked = true;
     newPackages[targetIndex].isLocked = true;
 
-    // Recalculate times only
     const withTimeline = calculateTimeline(newPackages);
     setPackages(withTimeline);
-    
-    // Clear any existing suggestions as context changed
     setSuggestion(null);
   };
 
-  const simulateScan = () => {
-    const newPkg: Package = {
-        id: `PKG-${Math.floor(Math.random() * 9000) + 1000}`,
-        address: 'ul. Kolejowa 3 (Skan)',
-        coords: { lat: MAP_CENTER.lat + 0.005, lng: MAP_CENTER.lng - 0.005 },
-        priority: false,
-        status: PackageStatus.PENDING,
-        isLocked: true // Newly scanned are locked to end by default until optimized
-    };
-    
-    // Add to end of pending
+  const handleAddPackage = (newPkg: Package) => {
+    // Insert new package at end of pending list
     const pendingIdx = packages.findIndex(p => p.status === PackageStatus.PENDING);
     let newList = [...packages];
     
     if (pendingIdx === -1) {
         newList.push(newPkg);
     } else {
-        // Find end of pending
-        newList.splice(newList.length, 0, newPkg);
+        // If high priority/confidence, put closer to top, else append
+        if (newPkg.priority) {
+           newList.splice(pendingIdx, 0, newPkg);
+        } else {
+           const lastPendingIdx = packages.map(p => p.status).lastIndexOf(PackageStatus.PENDING);
+           newList.splice(lastPendingIdx + 1, 0, newPkg);
+        }
     }
 
     const withTimeline = calculateTimeline(newList);
     setPackages(withTimeline);
-    showNotification("Dodano paczkę. Sprawdzam trasę...");
     
-    checkForOptimization(withTimeline);
+    // Feedback logic
+    if (newPkg.locationConfidence === 1.0) {
+        showNotification("Paczka dodana (Lokalizacja pewna)");
+    } else if (newPkg.locationConfidence === 0.0) {
+        showNotification("Paczka dodana. Uzupełnij adres!");
+    } else {
+        showNotification("Paczka dodana");
+    }
   };
 
   const pendingCount = packages.filter(p => p.status === PackageStatus.PENDING).length;
@@ -140,12 +141,15 @@ const App: React.FC = () => {
 
       {/* Action Bar */}
       <div className="flex justify-between items-center p-2 bg-inpost-gray border-b border-gray-700">
-         <button onClick={simulateScan} className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 py-2 rounded text-xs font-bold uppercase tracking-wider transition-colors border border-gray-600 mx-1">
-            <Scan size={16} className="text-inpost-yellow" /> Skanuj nową paczkę
+         <button 
+           onClick={() => setIsModalOpen(true)} 
+           className="flex-1 flex items-center justify-center gap-2 bg-white hover:bg-gray-200 text-black py-3 rounded text-sm font-bold uppercase tracking-wider transition-colors shadow-lg active:scale-95"
+         >
+            <Plus size={18} /> Dodaj paczkę
          </button>
       </div>
 
-      {/* SUGGESTION BANNER (The "Copilot" Interface) */}
+      {/* SUGGESTION BANNER */}
       {suggestion && (
         <div className="mx-3 mt-3 bg-gradient-to-r from-blue-900 to-inpost-gray border border-blue-500 rounded-lg p-3 flex items-center justify-between shadow-xl animate-fade-in relative overflow-hidden">
            <div className="relative z-10 flex items-center gap-3">
@@ -165,10 +169,6 @@ const App: React.FC = () => {
               >
                 Zastosuj
               </button>
-           </div>
-           {/* Decor */}
-           <div className="absolute -right-4 -bottom-8 text-blue-800/20 rotate-12">
-             <Navigation size={80} />
            </div>
         </div>
       )}
@@ -207,6 +207,14 @@ const App: React.FC = () => {
            </div>
          )}
       </div>
+
+      {/* Modal */}
+      {isModalOpen && (
+        <AddPackageModal 
+          onAdd={handleAddPackage} 
+          onClose={() => setIsModalOpen(false)} 
+        />
+      )}
 
     </div>
   );

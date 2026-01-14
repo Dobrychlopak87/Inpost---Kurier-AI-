@@ -19,14 +19,15 @@ const MapVisualizer: React.FC<MapVisualizerProps> = ({ packages, currentLocation
     packages.filter(p => p.status === PackageStatus.PENDING), 
   [packages]);
 
-  // Generate path string
+  // Generate path string only for packages with location confidence > 0
   const pathData = useMemo(() => {
-    if (pendingPackages.length === 0) return '';
+    const mappedPackages = pendingPackages.filter(p => (p.locationConfidence ?? 1.0) > 0);
+    if (mappedPackages.length === 0) return '';
     
     const start = normalize(currentLocation.lat, currentLocation.lng);
     let d = `M ${start.x} ${start.y}`;
     
-    pendingPackages.forEach(p => {
+    mappedPackages.forEach(p => {
       const point = normalize(p.coords.lat, p.coords.lng);
       d += ` L ${point.x} ${point.y}`;
     });
@@ -34,7 +35,7 @@ const MapVisualizer: React.FC<MapVisualizerProps> = ({ packages, currentLocation
     return d;
   }, [pendingPackages, currentLocation]);
 
-  // OpenStreetMap Bounding Box: minLon,minLat,maxLon,maxLat
+  // OpenStreetMap Bounding Box
   const bbox = `${MAP_BOUNDS.minLng},${MAP_BOUNDS.minLat},${MAP_BOUNDS.maxLng},${MAP_BOUNDS.maxLat}`;
 
   return (
@@ -71,15 +72,17 @@ const MapVisualizer: React.FC<MapVisualizerProps> = ({ packages, currentLocation
         })()}
 
         {/* Packages */}
-        {packages.map((pkg, index) => {
+        {packages.map((pkg) => {
           if (pkg.status !== PackageStatus.PENDING && pkg.status !== PackageStatus.FAILED) return null;
           
+          // Don't render marker if we don't know where it is
+          if ((pkg.locationConfidence ?? 1.0) === 0) return null;
+
           const { x, y } = normalize(pkg.coords.lat, pkg.coords.lng);
           const isNext = pkg.id === pendingPackages[0]?.id;
           
           return (
             <g key={pkg.id} className="transition-all duration-500 ease-in-out">
-              {/* Pulsing effect for next package */}
               {isNext && (
                 <circle cx={x} cy={y} r="8" fill="#FFCC00" opacity="0.3" className="animate-ping" />
               )}

@@ -20,6 +20,12 @@ export interface Package {
   calculatedEta?: string; // Np. "09:42"
   clusterId?: string; // ID dzielnicy/rejonu
   isLocked?: boolean; // Jeśli kurier ręcznie przesunął, AI tego nie dotyka
+  
+  // Nowe pole dla LabelIngestService
+  // 1.0 = Pewny (Paczkomat, Historyczny GPS)
+  // 0.5 = Przybliżony (Tylko ulica, brak numeru)
+  // 0.0 = Nieznany (Surowy tekst z OCR)
+  locationConfidence?: number; 
 }
 
 // "Pamięć Miasta" - zamiast uczyć się tras, uczymy się czasów odcinków
